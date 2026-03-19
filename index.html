@@ -19,7 +19,7 @@
             background-size: 400% 400%; animation: bg-animation 15s ease infinite; transition: background 0.8s ease;
         }
 
-        body.bg-menu { background-image: linear-gradient(-45deg, #1e272e, #2f3640, #485460, #1e272e); color: white;}
+        body.bg-menu { background: linear-gradient(90deg, #ff4500 10%, #6c5ce7 50%, #00d2ff 90%); background-size: 100% 100%; animation: none; color: white; }
         body.bg-hot { background-image: linear-gradient(-45deg, #ff4757, #ff6b81, #ffa502, #ff7f50); }
         body.bg-cold { background-image: linear-gradient(-45deg, #0984e3, #74b9ff, #00cec9, #81ecec); }
 
@@ -89,19 +89,37 @@
         @keyframes bounce { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-15px); } }
 
         /* Dashboard Styles */
+        .top-left-controls {
+            position: absolute; top: 40px; left: 40px; display: flex; flex-direction: column; gap: 15px; z-index: 100;
+        }
+
         .back-btn {
-            position: absolute; top: 40px; left: 40px;
             background: var(--glass-bg); padding: 12px 24px; border-radius: 30px; font-weight: 800; 
-            cursor: pointer; color: var(--text-dark); border: 1px solid var(--glass-border);
+            cursor: pointer; color: var(--text-dark); border: 1px solid var(--glass-border); text-align: center;
             box-shadow: 0 10px 20px rgba(0,0,0,0.1); transition: all 0.3s;
         }
         .back-btn:hover { padding-left: 18px; padding-right: 30px; background: white; transform: translateX(-5px); }
+
+        .mode-toggle {
+            display: flex; background: var(--glass-bg); padding: 5px; border-radius: 30px;
+            border: 1px solid var(--glass-border); box-shadow: 0 10px 20px rgba(0,0,0,0.1);
+            backdrop-filter: blur(10px); height: 35px; align-items: center; justify-content: center;
+        }
+        .toggle-option {
+            padding: 8px 16px; border-radius: 25px; cursor: pointer; font-weight: 800; font-size: 13px;
+            color: #57606f; transition: all 0.3s;
+        }
+        .toggle-option.active { background: #2f3542; color: white; box-shadow: 0 4px 10px rgba(0,0,0,0.2); }
 
         .dashboard {
             display: grid; grid-template-columns: 1fr 1fr; gap: 30px; width: 100%; max-width: 1200px;
             margin-top: 60px;
         }
-        @media (max-width: 900px) { .dashboard { grid-template-columns: 1fr; } .back-btn { top: 10px; left: 10px; } }
+        @media (max-width: 900px) { 
+            .dashboard { grid-template-columns: 1fr; } 
+            .top-left-controls { position: static; top: 10px; left: 10px; margin-bottom: 20px; } 
+            .mode-toggle { flex-wrap: wrap; }
+        }
 
         .panel {
             background: var(--glass-bg); backdrop-filter: blur(25px); -webkit-backdrop-filter: blur(25px);
@@ -173,18 +191,24 @@
 
     <!-- SIMULATOR DASHBOARD -->
     <div id="screen-simulator" class="screen">
-        <button class="back-btn" onclick="goBack()">← Main Menu</button>
+        <div class="top-left-controls">
+            <div class="back-btn" onclick="goBack()">← Main Menu</div>
+            <div class="mode-toggle">
+                <div class="toggle-option active" id="toggle-manual" onclick="setEntryMode('manual')">🧮 Manual Entry</div>
+                <div class="toggle-option" id="toggle-arduino" onclick="setEntryMode('arduino')">🔌 Arduino Live</div>
+            </div>
+        </div>
         
         <div class="dashboard">
             <div class="panel" id="dynamic-panel" style="border-top: 6px solid #2f3542;">
                 <h1 class="panel-title" id="panel-title-text">...</h1>
                 
                 <div class="input-grid">
-                    <div class="control-group">
+                    <div class="control-group" id="wrapper-init">
                         <label id="lbl-init"><i>🌡️</i> Initial Temp (°C)</label>
                         <input type="number" id="input-init" step="0.1">
                     </div>
-                    <div class="control-group">
+                    <div class="control-group" id="wrapper-env">
                         <label><i>🌍</i> Ambient Temp (°C)</label>
                         <input type="number" id="input-env" step="0.1" value="22.0">
                     </div>
@@ -200,6 +224,7 @@
 
                 <div style="display: flex; flex-direction: column; gap: 10px; margin-top: 10px;">
                     <button id="calc-btn" class="action-btn">🧮 Calculate Timer</button>
+                    <button id="connect-btn" class="action-btn" style="display:none; background: linear-gradient(135deg, #2ed573, #1e90ff);">🔌 Connect Arduino Port</button>
                 </div>
 
                 <div id="demo-output" class="demo-output"></div>
@@ -216,6 +241,7 @@
 
     <script>
         let currentMode = 'hot';
+        let entryMode = 'manual';
         let simulationChart = null;
         let particleInterval = null;
 
@@ -236,6 +262,7 @@
                 simScreen.classList.add('active');
                 
                 setupDashboard(mode);
+                setEntryMode(entryMode);
                 spawnParticles(mode);
 
             }, 750);
@@ -252,6 +279,32 @@
             document.getElementById('screen-menu').classList.add('active');
             clearInterval(particleInterval);
             document.getElementById('particles-container').innerHTML = ''; // Clear particles safely
+        }
+
+        function setEntryMode(mode) {
+            entryMode = mode;
+            document.getElementById('toggle-manual').classList.toggle('active', mode === 'manual');
+            document.getElementById('toggle-arduino').classList.toggle('active', mode === 'arduino');
+
+            const wrapInit = document.getElementById('wrapper-init');
+            const wrapEnv = document.getElementById('wrapper-env');
+            const btnCalc = document.getElementById('calc-btn');
+            const btnConn = document.getElementById('connect-btn');
+            const outBox = document.getElementById('demo-output');
+
+            if (mode === 'arduino') {
+                wrapInit.style.opacity = '0.3'; wrapInit.style.pointerEvents = 'none';
+                wrapEnv.style.opacity = '0.3'; wrapEnv.style.pointerEvents = 'none';
+                btnCalc.style.display = 'none';
+                btnConn.style.display = 'block';
+                outBox.style.display = 'none'; 
+            } else {
+                wrapInit.style.opacity = '1'; wrapInit.style.pointerEvents = 'auto';
+                wrapEnv.style.opacity = '1'; wrapEnv.style.pointerEvents = 'auto';
+                btnCalc.style.display = 'block';
+                btnConn.style.display = 'none';
+                outBox.style.display = 'none'; 
+            }
         }
 
         // ---- Particle Generator ----
@@ -440,6 +493,53 @@
                 }
             });
         }
+
+        // ==== Arduino Serial Handling ====
+        document.getElementById('connect-btn').addEventListener('click', async (e) => {
+            const btn = e.target;
+            const outDiv = document.getElementById('demo-output');
+
+            outDiv.style.display = 'none'; setTimeout(() => outDiv.style.display = 'block', 10);
+
+            try {
+                const port = await navigator.serial.requestPort();
+                await port.open({ baudRate: 9600 });
+                
+                btn.innerHTML = "✅ Arduino Linked!";
+                btn.style.background = "linear-gradient(135deg, #2ed573, #7bed9f)";
+                
+                outDiv.style.borderLeftColor = '#2ed573';
+                outDiv.innerHTML = `
+                    <strong style="color: #2ed573;">📡 Arduino Connected</strong><br><br>
+                    <span style="color: #2f3542;">Listening to serial port for live temperature data streams...</span><br>
+                    <span style="font-size:0.8em; color:grey;">(Requires external data string mapping)</span>
+                `;
+                
+                const textDecoder = new window.TextDecoderStream();
+                const readableStreamClosed = port.readable.pipeTo(textDecoder.writable);
+                const reader = textDecoder.readable.getReader();
+
+                while (true) {
+                    const { value, done } = await reader.read();
+                    if (done) break;
+                    if (value) console.log("Arduino Serial Data:", value);
+                }
+            } catch (error) {
+                console.error('Serial Connection Error:', error);
+                btn.innerHTML = "🔌 Connect Arduino Port";
+                
+                outDiv.style.borderLeftColor = '#ff4757';
+                if (error.name === 'NotFoundError') {
+                    outDiv.innerHTML = '<strong style="color:#ff4757;">⚠️ No Port Selected</strong><br>You aborted the connection popup.';
+                } else if (error.name === 'SecurityError') {
+                    outDiv.innerHTML = '<strong style="color:#ff4757;">⚠️ Security Denied</strong><br>Permission to access the Arduino was denied.';
+                } else if (!navigator.serial) {
+                    outDiv.innerHTML = '<strong style="color:#ff4757;">⚠️ API Unsupported</strong><br>Web Serial API is not supported in this browser. Please try Chrome or Edge.';
+                } else {
+                    outDiv.innerHTML = `<strong style="color:#ff4757;">⚠️ Connection Failed</strong><br>${error.message}`;
+                }
+            }
+        });
     </script>
 </body>
 </html>
