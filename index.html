@@ -1,0 +1,445 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Newton's Dynamic Thermal Simulator</title>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;800&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        :root {
+            --text-dark: #2f3542;
+            --glass-bg: rgba(255, 255, 255, 0.85);
+            --glass-border: rgba(255, 255, 255, 0.6);
+        }
+
+        body { 
+            font-family: 'Outfit', sans-serif;  margin: 0; padding: 0;
+            min-height: 100vh; overflow-x: hidden; color: var(--text-dark);
+            background-size: 400% 400%; animation: bg-animation 15s ease infinite; transition: background 0.8s ease;
+        }
+
+        body.bg-menu { background-image: linear-gradient(-45deg, #1e272e, #2f3640, #485460, #1e272e); color: white;}
+        body.bg-hot { background-image: linear-gradient(-45deg, #ff4757, #ff6b81, #ffa502, #ff7f50); }
+        body.bg-cold { background-image: linear-gradient(-45deg, #0984e3, #74b9ff, #00cec9, #81ecec); }
+
+        @keyframes bg-animation { 0% { background-position: 0% 50%; } 50% { background-position: 100% 50%; } 100% { background-position: 0% 50%; } }
+        @keyframes fade-up { from { opacity: 0; transform: translateY(40px); } to { opacity: 1; transform: translateY(0); } }
+        @keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
+        @keyframes slide-down { from { opacity: 0; transform: translateY(-15px); } to { opacity: 1; transform: translateY(0); } }
+
+        /* Floating particles */
+        #particles-container { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; pointer-events: none; z-index: 1; }
+        .particle { position: absolute; opacity: 0.4; }
+        
+        @keyframes float-snow {
+            0% { transform: translateY(-50px) translateX(0) rotate(0deg); opacity: 0; }
+            10% { opacity: 0.8; } 90% { opacity: 0.8; }
+            100% { transform: translateY(100vh) translateX(100px) rotate(360deg); opacity: 0; }
+        }
+        @keyframes float-ember {
+            0% { transform: translateY(100vh) translateX(0) scale(1.5); opacity: 0; }
+            10% { opacity: 0.9; } 90% { opacity: 0.9; }
+            100% { transform: translateY(-50px) translateX(-100px) scale(0.5); opacity: 0; }
+        }
+
+        /* Transition Overlay */
+        .transition-overlay {
+            position: fixed; top: 50%; left: 50%; width: 50px; height: 50px;
+            pointer-events: none; z-index: 9999; transform: translate(-50%, -50%) scale(0); 
+            border-radius: 50%; opacity: 0;
+        }
+        .transition-overlay.animate-hot {
+            background: radial-gradient(circle, #ffa502 0%, #ff4757 60%, rgba(255,71,87,0) 100%);
+            animation: explode 1.5s cubic-bezier(0.7, 0, 0.3, 1) forwards;
+        }
+        .transition-overlay.animate-cold {
+            background: radial-gradient(circle, #ffffff 0%, #00d2ff 60%, rgba(0,210,255,0) 100%);
+            animation: explode 1.5s cubic-bezier(0.7, 0, 0.3, 1) forwards;
+        }
+
+        @keyframes explode {
+            0% { transform: translate(-50%, -50%) scale(0); opacity: 1; }
+            50% { transform: translate(-50%, -50%) scale(100); opacity: 1; }
+            100% { transform: translate(-50%, -50%) scale(100); opacity: 0; }
+        }
+
+        /* Screen Layouts */
+        .screen { display: none; width: 100%; min-height: 100vh; position: relative; z-index: 10; padding: 40px; box-sizing: border-box; }
+        .screen.active { display: flex; flex-direction: column; align-items: center; justify-content: center; animation: fade-in 0.8s ease forwards; }
+
+        /* Menu Styles */
+        .menu-title { font-size: 50px; font-weight: 800; margin-bottom: 10px; text-shadow: 0 10px 20px rgba(0,0,0,0.3); text-align: center; }
+        .menu-subtitle { font-size: 20px; font-weight: 600; color: rgba(255,255,255,0.7); margin-bottom: 60px; text-align: center;}
+        
+        .menu-cards { display: flex; gap: 40px; flex-wrap: wrap; justify-content: center; }
+        .menu-card {
+            background: rgba(255,255,255,0.1); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
+            border: 1px solid rgba(255,255,255,0.2); padding: 50px 30px; border-radius: 30px; 
+            cursor: pointer; text-align: center; width: 320px; color: white;
+            transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+            box-shadow: 0 15px 35px rgba(0,0,0,0.2);
+        }
+        .menu-card:hover { transform: translateY(-15px) scale(1.05); background: rgba(255,255,255,0.15); }
+        .card-cold:hover { box-shadow: 0 30px 60px rgba(0, 210, 255, 0.4); border-color: rgba(0, 210, 255, 0.8); }
+        .card-hot:hover { box-shadow: 0 30px 60px rgba(255, 71, 87, 0.4); border-color: rgba(255, 71, 87, 0.8); }
+        
+        .card-icon { font-size: 80px; margin-bottom: 20px; text-shadow: 0 10px 20px rgba(0,0,0,0.2); animation: bounce 4s infinite ease-in-out; }
+        .card-hot .card-icon { animation-delay: 1s; }
+        @keyframes bounce { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-15px); } }
+
+        /* Dashboard Styles */
+        .back-btn {
+            position: absolute; top: 40px; left: 40px;
+            background: var(--glass-bg); padding: 12px 24px; border-radius: 30px; font-weight: 800; 
+            cursor: pointer; color: var(--text-dark); border: 1px solid var(--glass-border);
+            box-shadow: 0 10px 20px rgba(0,0,0,0.1); transition: all 0.3s;
+        }
+        .back-btn:hover { padding-left: 18px; padding-right: 30px; background: white; transform: translateX(-5px); }
+
+        .dashboard {
+            display: grid; grid-template-columns: 1fr 1fr; gap: 30px; width: 100%; max-width: 1200px;
+            margin-top: 60px;
+        }
+        @media (max-width: 900px) { .dashboard { grid-template-columns: 1fr; } .back-btn { top: 10px; left: 10px; } }
+
+        .panel {
+            background: var(--glass-bg); backdrop-filter: blur(25px); -webkit-backdrop-filter: blur(25px);
+            border: 1px solid var(--glass-border); padding: 40px; border-radius: 24px;
+            box-shadow: 0 25px 50px rgba(0,0,0,0.15), inset 0 0 0 1px rgba(255,255,255,0.9);
+            display: flex; flex-direction: column; animation: fade-up 0.8s forwards;
+        }
+
+        .chart-container {
+            background: var(--glass-bg); backdrop-filter: blur(25px); padding: 30px; border-radius: 24px;
+            display: flex; flex-direction: column; justify-content: center; animation: fade-up 0.8s forwards; animation-delay: 0.15s;
+            border: 1px solid var(--glass-border); box-shadow: 0 25px 50px rgba(0,0,0,0.15);
+        }
+
+        h1.panel-title { font-size: 32px; font-weight: 800; text-align: center; margin-top: 0; margin-bottom: 25px; }
+
+        .input-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 20px; }
+        .control-group { margin-bottom: 10px; }
+        label { display: flex; align-items: center; margin-bottom: 8px; font-weight: 600; font-size: 14px; color: #57606f; }
+        label i { margin-right: 6px; font-style: normal; font-size: 1.2em; }
+        
+        input { 
+            padding: 14px; width: 100%; box-sizing: border-box; border: 2px solid rgba(255,255,255,0.8); border-radius: 12px;
+            font-size: 16px; font-family: 'Outfit', sans-serif; background-color: rgba(255,255,255,0.5); font-weight: 600; color: var(--text-dark); transition: all 0.3s;
+        }
+        input:focus { outline: none; background-color: #fff; transform: translateY(-2px); border-color: #1e90ff; box-shadow: 0 0 0 4px rgba(30, 144, 255, 0.15); }
+
+        button.action-btn { 
+            color: white; border: none; padding: 18px 20px; border-radius: 12px; font-size: 16px; font-weight: 800; cursor: pointer; width: 100%;
+            transition: all 0.3s; text-transform: uppercase; letter-spacing: 1px; font-family: 'Outfit', sans-serif; margin-bottom: 12px; box-shadow: 0 8px 15px rgba(0,0,0,0.2);
+        }
+        button.action-btn:hover { transform: translateY(-3px) scale(1.02); box-shadow: 0 12px 25px rgba(0,0,0,0.3); }
+
+        .demo-output {
+            padding: 20px; background: rgba(255, 255, 255, 0.95); border-radius: 14px; display: none; margin-top: 15px;
+            font-size: 15px; line-height: 1.6; box-shadow: 0 8px 20px rgba(0,0,0,0.06); animation: slide-down 0.5s forwards;
+            border-left: 6px solid #2f3542;
+        }
+        
+        .chart-wrapper { position: relative; height: 350px; width: 100%; flex-grow: 1; }
+        details { margin-top: 15px; background: rgba(0,0,0,0.03); padding: 12px; border-radius: 8px; border: 1px solid rgba(0,0,0,0.05); }
+        summary { font-weight: 800; cursor: pointer; color: #2f3542; user-select: none; }
+        .math-breakdown { margin-top: 12px; font-family: monospace; font-size: 0.95em; line-height: 1.6; color: #57606f; }
+    </style>
+</head>
+<body class="bg-menu">
+
+    <div id="particles-container"></div>
+    <div id="transition-overlay" class="transition-overlay"></div>
+
+    <!-- MAIN MENU -->
+    <div id="screen-menu" class="screen active">
+        <h1 class="menu-title">Newton's Thermal Environments</h1>
+        <p class="menu-subtitle">Select your physical scenario to initialize the simulation engine.</p>
+        
+        <div class="menu-cards">
+            <div class="menu-card card-hot" onclick="selectMode('hot')">
+                <div class="card-icon">🔥</div>
+                <h2 style="margin-top:0;">Cooling Simulator</h2>
+                <p>Hot Object → Room Temperature</p>
+            </div>
+            <div class="menu-card card-cold" onclick="selectMode('cold')">
+                <div class="card-icon">❄️</div>
+                <h2 style="margin-top:0;">Warming Simulator</h2>
+                <p>Frozen Object → Room Temperature</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- SIMULATOR DASHBOARD -->
+    <div id="screen-simulator" class="screen">
+        <button class="back-btn" onclick="goBack()">← Main Menu</button>
+        
+        <div class="dashboard">
+            <div class="panel" id="dynamic-panel" style="border-top: 6px solid #2f3542;">
+                <h1 class="panel-title" id="panel-title-text">...</h1>
+                
+                <div class="input-grid">
+                    <div class="control-group">
+                        <label id="lbl-init"><i>🌡️</i> Initial Temp (°C)</label>
+                        <input type="number" id="input-init" step="0.1">
+                    </div>
+                    <div class="control-group">
+                        <label><i>🌍</i> Ambient Temp (°C)</label>
+                        <input type="number" id="input-env" step="0.1" value="22.0">
+                    </div>
+                    <div class="control-group">
+                        <label><i>🎯</i> Target Temp (°C)</label>
+                        <input type="number" id="input-target" step="0.1">
+                    </div>
+                    <div class="control-group">
+                        <label><i>📉</i> Thermal Const. (k)</label>
+                        <input type="number" id="input-k" step="0.01" value="0.05">
+                    </div>
+                </div>
+
+                <div style="display: flex; flex-direction: column; gap: 10px; margin-top: 10px;">
+                    <button id="calc-btn" class="action-btn">🧮 Calculate Timer</button>
+                </div>
+
+                <div id="demo-output" class="demo-output"></div>
+            </div>
+
+            <div class="chart-container">
+                <h2 style="margin-top:0; color:#2f3542; text-align:center;">📈 Real-Time Trajectory</h2>
+                <div class="chart-wrapper">
+                    <canvas id="coolingChart"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let currentMode = 'hot';
+        let simulationChart = null;
+        let particleInterval = null;
+
+        // ---- UI Transitions ----
+        function selectMode(mode) {
+            currentMode = mode;
+            const overlay = document.getElementById('transition-overlay');
+            const menuScreen = document.getElementById('screen-menu');
+            const simScreen = document.getElementById('screen-simulator');
+            
+            // 1. Kick off explosion animation
+            overlay.className = 'transition-overlay animate-' + mode;
+            
+            // 2. Mid explosion (750ms), swap body gradients and HTML
+            setTimeout(() => {
+                document.body.className = 'bg-' + mode;
+                menuScreen.classList.remove('active');
+                simScreen.classList.add('active');
+                
+                setupDashboard(mode);
+                spawnParticles(mode);
+
+            }, 750);
+
+            // 3. Clear explosion class to reset
+            setTimeout(() => {
+                overlay.className = 'transition-overlay';
+            }, 1500);
+        }
+
+        function goBack() {
+            document.body.className = 'bg-menu';
+            document.getElementById('screen-simulator').classList.remove('active');
+            document.getElementById('screen-menu').classList.add('active');
+            clearInterval(particleInterval);
+            document.getElementById('particles-container').innerHTML = ''; // Clear particles safely
+        }
+
+        // ---- Particle Generator ----
+        function spawnParticles(mode) {
+            clearInterval(particleInterval);
+            const container = document.getElementById('particles-container');
+            container.innerHTML = '';
+            
+            const createParticle = () => {
+                let p = document.createElement('div');
+                p.className = 'particle';
+                if (mode === 'cold') {
+                    p.innerHTML = '❄️';
+                    p.style.left = (Math.random() * 100) + 'vw';
+                    p.style.top = -50 + 'px';
+                    p.style.fontSize = (Math.random() * 15 + 10) + 'px';
+                    p.style.animation = `float-snow ${Math.random() * 5 + 6}s linear forwards`;
+                } else {
+                    p.innerHTML = '🔥';
+                    p.style.left = (Math.random() * 100) + 'vw';
+                    p.style.top = '100vh';
+                    p.style.fontSize = (Math.random() * 15 + 15) + 'px';
+                    p.style.animation = `float-ember ${Math.random() * 4 + 4}s linear forwards`;
+                }
+                
+                container.appendChild(p);
+                // remove when anim ends
+                setTimeout(() => p.remove(), 10000);
+            };
+
+            // Spawn immediately
+            for(let i=0; i<8; i++) setTimeout(createParticle, Math.random()*2000);
+            
+            // Continuous spawning
+            particleInterval = setInterval(createParticle, 800);
+        }
+
+        // ---- Dashboard Setup ----
+        function setupDashboard(mode) {
+            const panel = document.getElementById('dynamic-panel');
+            const title = document.getElementById('panel-title-text');
+            const lblInit = document.getElementById('lbl-init');
+            const inInit = document.getElementById('input-init');
+            const inTarget = document.getElementById('input-target');
+            const btnCalc = document.getElementById('calc-btn');
+            const outDiv = document.getElementById('demo-output');
+            
+            Chart.defaults.animation = false; // Disable initial chart anim
+            outDiv.style.display = 'none';
+
+            if (mode === 'hot') {
+                panel.style.borderTopColor = '#ff4757';
+                title.innerHTML = '🔥 Heat Sink Simulator';
+                lblInit.innerHTML = '<i>☕</i> Boiling Initial Temp (°C)';
+                inInit.value = '90.0';
+                inTarget.value = '25.0';
+                
+                btnCalc.style.background = 'linear-gradient(135deg, #ff416c, #ff4b2b)';
+                btnCalc.innerHTML = '🧮 Compute Cooling Duration';
+                
+                drawChart(90, 22, 25, 0.05, 62.42, 'hot');
+            } else {
+                panel.style.borderTopColor = '#00d2ff';
+                title.innerHTML = '❄️ Defrost Simulator';
+                lblInit.innerHTML = '<i>🧊</i> Frozen Initial Temp (°C)';
+                inInit.value = '-10.0';
+                inTarget.value = '15.0';
+
+                btnCalc.style.background = 'linear-gradient(135deg, #00d2ff, #3a7bd5)';
+                btnCalc.innerHTML = '🧮 Compute Warming Duration';
+                
+                drawChart(-10, 22, 15, 0.05, 36.97, 'cold');
+            }
+            Chart.defaults.animation = true;
+        }
+
+        // ---- Math Engine ----
+        function calcTemp(tInit, tEnv, k, t) { return tEnv + (tInit - tEnv) * Math.exp(-k * t); }
+
+        function calculateTimeForTarget(tTarget, tInit, tEnv, k) {
+            if (tInit === tEnv) return 0;
+            const ratio = (tTarget - tEnv) / (tInit - tEnv);
+            if (ratio <= 0) return -1; 
+            return -Math.log(ratio) / k;
+        }
+
+        document.getElementById('calc-btn').addEventListener('click', () => {
+            const tInit = parseFloat(document.getElementById('input-init').value);
+            const tEnv = parseFloat(document.getElementById('input-env').value);
+            const tTarget = parseFloat(document.getElementById('input-target').value);
+            const k = parseFloat(document.getElementById('input-k').value);
+            const out = document.getElementById('demo-output');
+            
+            out.style.display = 'none'; // reset for entry anim
+            setTimeout(() => out.style.display = 'block', 10);
+
+            if (isNaN(tInit) || isNaN(tEnv) || isNaN(tTarget) || isNaN(k)) {
+                out.style.borderLeftColor = 'red';
+                out.innerHTML = '<span style="color:red;font-weight:bold;">⚠️ Missing parameters.</span>'; return;
+            }
+
+            // Smart physical constraint checking based on mode
+            if (currentMode === 'hot') {
+                if (tInit <= tEnv) { out.style.borderLeftColor='red'; out.innerHTML='<span style="color:red;font-weight:bold;">⚠️ Cooling Error: Initial temp must be hotter than ambient.</span>'; return; }
+                if (tTarget <= tEnv || tTarget >= tInit) { out.style.borderLeftColor='red'; out.innerHTML='<span style="color:red;font-weight:bold;">⚠️ Math Error: Target bounds physically unreachable.</span>'; return; }
+            } else {
+                if (tInit >= tEnv) { out.style.borderLeftColor='red'; out.innerHTML='<span style="color:red;font-weight:bold;">⚠️ Warming Error: Initial temp must be colder than ambient.</span>'; return; }
+                if (tTarget >= tEnv || tTarget <= tInit) { out.style.borderLeftColor='red'; out.innerHTML='<span style="color:red;font-weight:bold;">⚠️ Math Error: Target bounds physically unreachable.</span>'; return; }
+            }
+
+            const timeReq = calculateTimeForTarget(tTarget, tInit, tEnv, k);
+            const ratio = (tTarget - tEnv) / (tInit - tEnv);
+            
+            const actColor = currentMode === 'hot' ? '#ff4757' : '#00d2ff';
+            out.style.borderLeftColor = actColor;
+            
+            out.innerHTML = `
+                <strong style="color: ${actColor};">✅ Trajectory Validated</strong><br><br>
+                <i>${currentMode==='hot' ? 'Cooling' : 'Warming'} ${tInit}°C → ${tTarget}°C</i><br>
+                Time Requirements: <b id="time-counter" style="font-size: 1.3em; color: ${actColor};">0m 0s</b>
+                
+                <details style="margin-top: 15px; background: rgba(0,0,0,0.03); padding: 12px; border-radius: 8px;">
+                    <summary style="font-weight: bold; cursor: pointer; color: #2f3542;">📐 Source Equations</summary>
+                    <div style="margin-top: 10px; font-family: monospace; font-size: 0.9em; color: #57606f;">
+                        Target = ${tEnv} + (${tInit} - ${tEnv}) * e^(-${k}*t)<br>
+                        ${ratio.toFixed(4)} = e^(-${k}*t)<br>
+                        ln(${ratio.toFixed(4)}) = -${k} * t<br>
+                        t = ${timeReq.toFixed(2)} Minutes
+                    </div>
+                </details>
+            `;
+            
+            animateTimeCounter('time-counter', timeReq);
+            drawChart(tInit, tEnv, tTarget, k, timeReq, currentMode);
+        });
+
+        // ---- Animation Engies ----
+        function animateTimeCounter(id, totalTime) {
+            const obj = document.getElementById(id);
+            let start = null;
+            const step = (ts) => {
+                if(!start) start = ts;
+                let prog = Math.min((ts - start)/1200, 1);
+                prog = 1 - Math.pow(2, -10 * prog);
+                const curr = totalTime * prog;
+                obj.innerHTML = `${Math.floor(curr)}m ${Math.round((curr - Math.floor(curr))*60)}s`;
+                if(prog < 1) window.requestAnimationFrame(step);
+            };
+            window.requestAnimationFrame(step);
+        }
+
+        function drawChart(tInit, tEnv, tTarget, k, timeReq, mode) {
+            const ctx = document.getElementById('coolingChart').getContext('2d');
+            const timeLabels = [], tempValues = [], ambValues = [], tgtValues = [];
+            const max = timeReq > 0 ? Math.max(timeReq * 1.25, 10) : 50;
+            
+            for (let t = 0; t <= max; t += max/50) {
+                timeLabels.push(t.toFixed(1));
+                tempValues.push(calcTemp(tInit, tEnv, k, t));
+                ambValues.push(tEnv); tgtValues.push(tTarget);
+            }
+
+            if (simulationChart) simulationChart.destroy();
+
+            const cColor = mode === 'cold' ? '#00d2ff' : '#ff4757';
+            const cBg = mode === 'cold' ? 'rgba(0, 210, 255, 0.15)' : 'rgba(255, 71, 87, 0.1)';
+
+            simulationChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: timeLabels,
+                    datasets: [
+                        { label: 'Object Temp', data: tempValues, borderColor: cColor, backgroundColor: cBg, borderWidth: 3, pointRadius: 0, fill: true, tension: 0.4 },
+                        { label: 'Ambient', data: ambValues, borderColor: mode==='cold'?'#ff4757':'#1e3c72', borderDash:[5,5], pointRadius:0 },
+                        { label: 'Target', data: tgtValues, borderColor: '#2ed573', borderDash:[2,2], pointRadius:0 }
+                    ]
+                },
+                options: {
+                    responsive: true, maintainAspectRatio: false,
+                    animation: { duration: 1500, easing: 'easeOutQuart' },
+                    plugins: { tooltip: { mode: 'index', intersect: false } },
+                    scales: {
+                        x: { title: { display: true, text: 'Time (Minutes)' }, ticks: { maxTicksLimit: 6 } },
+                        y: { title: { display: true, text: 'Temp (°C)' }, suggestedMin: Math.min(tInit, tEnv) - 5, suggestedMax: Math.max(tInit, tEnv) + 5 }
+                    }
+                }
+            });
+        }
+    </script>
+</body>
+</html>
